@@ -1,0 +1,55 @@
+resources:
+  - repo: self
+    fetchDepth: 1
+
+trigger:
+  - main
+
+variables:
+  SecureFileName: 'service_account_key.json'
+  DockerImageName: '/cicd-example'
+  GCPProjectId: ''
+  GCPServicetId: 'cicd-example'
+  GCPRepositoryName: 'us.gcr.io'
+  GCPRegionName: ''
+  GCPServiceAccount: ''
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build and Push Docker Image
+    jobs:
+      - job: BuildImagePushImage
+        displayName: Build and Push Docker
+        steps:
+        - task: Docker@2
+          displayName: Build Docker and Push
+          inputs:
+            containerRegistry: 'GCPDockerRegistry'
+            repository: $(DockerImageName)
+            command: 'buildAndPush'
+            Dockerfile: '**/Dockerfile'
+
+  - stage: Deploy
+    displayName: Deploy on GCP
+    jobs:
+      - job: Deploy
+        displayName: Deploy Image on GCP
+        steps:
+        - task: DownloadSecureFile@1
+          displayName: Download Service Account Key
+          name: serviceAccountFile
+          inputs:
+            secureFile: $(SecureFileName)
+            retryCount: '5'
+
+        - task: GcloudRunner@0
+          displayName: Authenticate Service Account on GCP
+          inputs:
+            command: 'auth activate-service-account'
+            arguments: '--key-file=$(serviceAccountFile.secureFilePath)'
+
+        - task: GcloudRunner@0
+          displayName: Deploy Service on GCP
+          inputs:
+            command: 'run deploy $(GCPServicetId)'
+            arguments: '--service-account=$(GCPServiceAccount) --allow-unauthenticated --image=$(GCPRepositoryName)/$(DockerImageName):$(Build.BuildId) --platform=managed --region=$(GCPRegionName) --project=$(GCPProjectId)'
